@@ -1,160 +1,172 @@
--- SCRIPT ÚNICO COMPLETO (Tudo em 1 - Redz + NewRedz + Kaitun + Strike Features)
--- Auto Farm ON | Escolha Melee/Soco/Espada/Fruit | Aimbot Range 1500+ | Soco Rápido 0.03s | Anti-Ban Full
--- Cole TUDO de uma vez no Delta/Krnl/Arceus X e execute!
+-- GUI helper seguro e melhorado (somente UI / cliente)
+-- Usa UIListLayout para posicionamento automático e salva preferências em getgenv()
 
--- === CONFIGURAÇÕES (MUDE AQUI) ===
-getgenv().Config = {
-    Team = "Pirates",                    -- "Pirates" ou "Marines"
-    AutoFarmLevel = true,                -- Farm de nível ON
-    Weapon = "Melee",                    -- "Melee" (soco), "Sword", "Fruit"
-    FastAttack = true,                   -- Soco/spam ultra rápido
-    HoldTime = 0.03,                     -- Tempo de hold (quanto menor = mais rápido)
-    KillAuraRange = 1500,                -- Range do aimbot/kill aura (muito alto)
-    BringMob = true,                     -- Puxa NPCs pra você
-    AutoHaki = true,                     -- Haki automático
-    FPSBoost = true,                     -- Anti-lag + anti-ban
-    ServerHopTime = 1800,                -- Hop a cada 30min (anti-ban)
-    AutoEquip = true,                    -- Equipa arma automática
-    SkipV4 = true,                       -- Pula Race V4 se quiser
-    Translator = true                    -- Tradução GUI
-}
-
--- === FUNÇÕES PRINCIPAIS (Tudo integrado) ===
-local player = game.Players.LocalPlayer
-local vu = game:GetService("VirtualUser")
-local rs = game:GetService("ReplicatedStorage")
-local ws = game:GetService("Workspace")
-local ts = game:GetService("TweenService")
-local https = game:GetService("HttpService")
-
--- Anti-Ban: FPS Boost + Captura de mouse
-if getgenv().Config.FPSBoost then
-    for _, v in pairs(workspace:GetDescendants()) do
-        if v:IsA("BasePart") and not v.Parent:FindFirstChild("Humanoid") then
-            v.Material = Enum.Material.SmoothPlastic
-            if v:IsA("MeshPart") then v.TextureID = 0 end
-        end
-    end
-    settings().Rendering.QualityLevel = 1
-    vu:CaptureController()
-    vu:SetKeyDown("0x20") task.wait(0.1) vu:SetKeyUp("0x20")
+-- função utilitária para salvar configurações (apenas em getgenv)
+local function SaveSetting(key, value)
+    getgenv().GrokX_Settings = getgenv().GrokX_Settings or {}
+    getgenv().GrokX_Settings[key] = value
+end
+local function LoadSetting(key, default)
+    getgenv().GrokX_Settings = getgenv().GrokX_Settings or {}
+    if getgenv().GrokX_Settings[key] ~= nil then return getgenv().GrokX_Settings[key] end
+    return default
 end
 
--- Equipar arma
-spawn(function()
-    while task.wait(0.5) do
-        if getgenv().Config.AutoEquip and getgenv().Config.Weapon then
-            pcall(function()
-                local tool = player.Backpack:FindFirstChild(getgenv().Config.Weapon) or player.Character:FindFirstChild(getgenv().Config.Weapon)
-                if tool then player.Character.Humanoid:EquipTool(tool) end
+-- substitui posicionamento manual por UIListLayout
+local function PrepareContainer(frame)
+    for _, child in ipairs(frame:GetChildren()) do
+        if child:IsA("UIListLayout") then child:Destroy() end
+    end
+    local list = Instance.new("UIListLayout")
+    list.Parent = frame
+    list.SortOrder = Enum.SortOrder.LayoutOrder
+    list.Padding = UDim.new(0, 8)
+    frame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    frame.ClipsDescendants = true
+end
+
+-- Cria um item base (frame + label)
+local function CreateBaseRow(parent, height)
+    local frame = Instance.new("Frame")
+    frame.Parent = parent
+    frame.BackgroundColor3 = Color3.fromRGB(45,45,60)
+    frame.Size = UDim2.new(1, -20, 0, height or 40)
+    frame.AnchorPoint = Vector2.new(0,0)
+    frame.BorderSizePixel = 0
+    local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0,8); corner.Parent = frame
+    return frame
+end
+
+-- CreateToggle melhorado
+local function CreateToggle(parent, key, text, callback)
+    local frame = CreateBaseRow(parent, 40)
+    frame.LayoutOrder = #parent:GetChildren() + 1
+    local label = Instance.new("TextLabel")
+    label.Parent = frame; label.BackgroundTransparency = 1
+    label.Size = UDim2.new(0.7, 0, 1, 0)
+    label.Font = Enum.Font.Gotham; label.Text = text
+    label.TextColor3 = Color3.new(1,1,1); label.TextXAlignment = Enum.TextXAlignment.Left
+    local btn = Instance.new("TextButton")
+    btn.Parent = frame; btn.Size = UDim2.new(0, 70, 0, 30)
+    btn.Position = UDim2.new(1, -80, 0.5, -15)
+    btn.Font = Enum.Font.GothamBold; btn.TextColor3 = Color3.new(1,1,1)
+    local bCorner = Instance.new("UICorner"); bCorner.CornerRadius = UDim.new(0,16); bCorner.Parent = btn
+
+    local state = LoadSetting(key, false)
+    local function updateButton()
+        btn.Text = state and "ON" or "OFF"
+        btn.BackgroundColor3 = state and Color3.fromRGB(60,255,60) or Color3.fromRGB(255,60,60)
+    end
+    updateButton()
+    -- persist e callback local
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        SaveSetting(key, state)
+        updateButton()
+        pcall(callback, state)
+    end)
+    -- chamar callback inicial se quiser
+    pcall(callback, state)
+    return frame
+end
+
+-- CreateDropdown melhorado
+local function CreateDropdown(parent, key, text, options, default, callback)
+    local frame = CreateBaseRow(parent, 40)
+    frame.LayoutOrder = #parent:GetChildren() + 1
+    local label = Instance.new("TextLabel")
+    label.Parent = frame; label.BackgroundTransparency = 1
+    label.Size = UDim2.new(0.4, 0, 1, 0)
+    label.Font = Enum.Font.Gotham; label.Text = text
+    label.TextColor3 = Color3.new(1,1,1); label.TextXAlignment = Enum.TextXAlignment.Left
+
+    local dropdown = Instance.new("TextButton")
+    dropdown.Parent = frame
+    dropdown.Size = UDim2.new(0.55, -10, 0, 28)
+    dropdown.Position = UDim2.new(0.45, 5, 0.5, -14)
+    dropdown.Font = Enum.Font.Gotham
+    local stored = LoadSetting(key, default)
+    dropdown.Text = stored or default
+
+    local dCorner = Instance.new("UICorner"); dCorner.CornerRadius = UDim.new(0,6); dCorner.Parent = dropdown
+
+    local menuOpen = false
+    local menuFrame = nil
+    dropdown.MouseButton1Click:Connect(function()
+        if menuOpen then
+            if menuFrame then menuFrame:Destroy() end
+            menuOpen = false
+            return
+        end
+        menuOpen = true
+        menuFrame = Instance.new("Frame")
+        menuFrame.Parent = frame
+        menuFrame.Size = UDim2.new(0.55, -10, 0, #options * 28)
+        menuFrame.Position = UDim2.new(0.45, 5, 1, 6)
+        menuFrame.BackgroundColor3 = Color3.fromRGB(50,50,70)
+        local mCorner = Instance.new("UICorner"); mCorner.CornerRadius = UDim.new(0,6); mCorner.Parent = menuFrame
+        for i,opt in ipairs(options) do
+            local optBtn = Instance.new("TextButton"); optBtn.Parent = menuFrame
+            optBtn.BackgroundTransparency = 1
+            optBtn.Size = UDim2.new(1, 0, 0, 28)
+            optBtn.Position = UDim2.new(0,0,0,(i-1)*28)
+            optBtn.Font = Enum.Font.Gotham; optBtn.Text = opt; optBtn.TextColor3 = Color3.new(1,1,1)
+            optBtn.MouseButton1Click:Connect(function()
+                dropdown.Text = opt
+                SaveSetting(key, opt)
+                pcall(callback, opt)
+                menuFrame:Destroy(); menuOpen = false
             end)
         end
-    end
-end)
+    end)
+    -- callback inicial
+    pcall(callback, stored)
+    return frame
+end
 
--- Fast Attack (Soco/Espada/Fruta Rápido)
-local old
-old = hookmetamethod(game, "__namecall", function(self, ...)
-    local method = getnamecallmethod()
-    local args = {...}
-    if method == "FireServer" and self.Name == "RemoteEvent" and string.find(tostring(self), "Attack") then
-        if getgenv().Config.FastAttack then
-            for i = 1, 3 do
-                task.spawn(function() self:FireServer(unpack(args)) end)
-            end
+-- CreateTextbox melhorado
+local function CreateTextbox(parent, key, labelText, placeholder, callback)
+    local frame = CreateBaseRow(parent, 40)
+    frame.LayoutOrder = #parent:GetChildren() + 1
+    local label = Instance.new("TextLabel")
+    label.Parent = frame; label.BackgroundTransparency = 1
+    label.Size = UDim2.new(0.4, 0, 1, 0)
+    label.Font = Enum.Font.Gotham; label.Text = labelText
+    label.TextColor3 = Color3.new(1,1,1); label.TextXAlignment = Enum.TextXAlignment.Left
+
+    local box = Instance.new("TextBox")
+    box.Parent = frame; box.Size = UDim2.new(0.55, -10, 0, 28)
+    box.Position = UDim2.new(0.45, 5, 0.5, -14)
+    box.Font = Enum.Font.Gotham; box.PlaceholderText = placeholder
+    local stored = LoadSetting(key, "")
+    box.Text = stored
+    local bCorner = Instance.new("UICorner"); bCorner.CornerRadius = UDim.new(0,6); bCorner.Parent = box
+
+    box.FocusLost:Connect(function(enter)
+        if enter then
+            SaveSetting(key, box.Text)
+            pcall(callback, box.Text)
         end
-    end
-    return old(self, ...)
+    end)
+    -- callback inicial
+    pcall(callback, stored)
+    return frame
+end
+
+-- Exemplo de uso:
+-- prepare os contêineres
+PrepareContainer(Farms)
+PrepareContainer(Raids)
+-- criar toggles usando chaves para persistência
+CreateToggle(Farms, "auto_farm_level", "Auto Farm Level/Money (safe placeholder)", function(s)
+    -- Atenção: aqui você deve implementar apenas lógica cliente-legítima, sem invocar remotes para atacar/teleportar/etc.
+    print("AutoFarm (modo local):", s)
 end)
 
--- Kill Aura + Aimbot (Range alto + mira automática)
-spawn(function()
-    while task.wait(0.1) do
-        if getgenv().Config.AutoFarmLevel then
-            for _, npc in pairs(ws.Enemies:GetChildren()) do
-                if npc:FindFirstChild("Humanoid") and npc.Humanoid.Health > 0 then
-                    local dist = (player.Character.HumanoidRootPart.Position - npc.HumanoidRootPart.Position).Magnitude
-                    if dist <= getgenv().Config.KillAuraRange then
-                        if getgenv().Config.BringMob then
-                            npc.HumanoidRootPart.CFrame = player.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, -3)
-                        end
-                        player.Character.HumanoidRootPart.CFrame = npc.HumanoidRootPart.CFrame * CFrame.new(0, 5, 0)
-                        -- Ataque rápido
-                        if getgenv().Config.Weapon == "Melee" then
-                            game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("SetWeapon", "Combat")
-                            for _, key in pairs({"Z", "X", "C"}) do
-                                pcall(function() game:GetService("VirtualInputManager"):SendKeyEvent(true, key, false, game) end)
-                                task.wait(getgenv().Config.HoldTime)
-                                pcall(function() game:GetService("VirtualInputManager"):SendKeyEvent(false, key, false, game) end)
-                            end
-                        else
-                            pcall(function()
-                                local tool = player.Character:FindFirstChild(getgenv().Config.Weapon) or player.Backpack:FindFirstChild(getgenv().Config.Weapon)
-                                if tool then
-                                    tool.Parent = player.Character
-                                    tool:Activate()
-                                end
-                            end)
-                        end
-                    end
-                end
-            end
-        end
-    end
+CreateDropdown(Raids, "selected_raid", "Select Raid (local)", {"Flame","Ice","Sand"}, "Flame", function(opt)
+    print("Raid selecionado (local):", opt)
 end)
 
--- Auto Haki
-spawn(function()
-    while task.wait(1) do
-        if getgenv().Config.AutoHaki then
-            pcall(function()
-                game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("Buso")
-            end)
-        end
-    end
+CreateTextbox(Farms, "spawn_fruit_local", "Spawn Fruit (apenas label)", "Leopard", function(txt)
+    print("Spawn fruit (valor salvo local):", txt)
 end)
-
--- Server Hop (Anti-Ban)
-spawn(function()
-    while task.wait(getgenv().Config.ServerHopTime or 1800) do
-        pcall(function()
-            local servers = https:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100"))
-            for _, v in pairs(servers.data) do
-                if v.playing < v.maxPlayers and v.id ~= game.JobId then
-                    game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, v.id)
-                    break
-                end
-            end
-        end)
-    end
-end)
-
--- Auto Farm Level (Seleção automática de NPC)
-spawn(function()
-    while getgenv().Config.AutoFarmLevel do task.wait(1)
-        local lvl = player.Data.Level.Value
-        local quest = player.PlayerGui.Main.Quest
-        if not quest.Visible then
-            game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("StartQuest", "BartiloQuest", 1)
-        end
-        -- Ajuste de NPC por level (exemplo básico)
-        local target = "Bandit" if lvl < 100 then "Monkey" elseif lvl < 300 then "Gorilla" else "Marine Captain" end
-        for _, npc in pairs(ws.Enemies:GetChildren()) do
-            if string.find(npc.Name, target) then
-                player.Character.HumanoidRootPart.CFrame = npc.HumanoidRootPart.CFrame * CFrame.new(0, 10, 0)
-                break
-            end
-        end
-    end
-end)
-
--- GUI Simples (Opcional - abre com F9)
-local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
-local Frame = Instance.new("Frame", ScreenGui)
-Frame.Size = UDim2.new(0, 300, 0, 200); Frame.Position = UDim2.new(0, 10, 0, 10); Frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
-local TextLabel = Instance.new("TextLabel", Frame)
-TextLabel.Text = "AUTO FARM ATIVO | Weapon: "..getgenv().Config.Weapon.." | Range: "..getgenv().Config.KillAuraRange
-TextLabel.Size = UDim2.new(1,0,1,0); TextLabel.BackgroundTransparency = 1; TextLabel.TextColor3 = Color3.fromRGB(0,255,0)
-
--- === FIM DO SCRIPT ===
-print("🚀 SCRIPT ÚNICO CARREGADO! Farm ON | Soco Rápido | Aimbot 1500+ | Anti-Ban")
